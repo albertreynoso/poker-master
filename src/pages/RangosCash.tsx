@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { SequenceType, CashRange, CashHandMatrix } from '@/types/cashGame';
 import { OpenRaiseSequence } from '@/components/cashgame/OpenRaiseSequence';
@@ -9,7 +8,7 @@ import { SqueezeSequence } from '@/components/cashgame/SqueezeSequence';
 import { Cold4BetSequence } from '@/components/cashgame/Cold4BetSequence';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Trash2, Download } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const STORAGE_KEY = 'poker-cash-ranges';
 
@@ -65,76 +64,67 @@ export default function RangosCash() {
     toast.success('Ranges exported');
   };
 
+  const sequences = [
+    { id: 'OPEN_RAISE' as SequenceType, label: 'Open Raise' },
+    { id: 'RAISE_OVER_LIMP' as SequenceType, label: 'Raise Over Limp' },
+    { id: '3BET' as SequenceType, label: '3Bet / 4Bet / 5Bet' },
+    { id: 'SQUEEZE' as SequenceType, label: 'Squeeze / Call' },
+    { id: 'COLD_4BET' as SequenceType, label: 'Cold 4Bet' },
+  ];
+
   return (
-    <div className="flex h-full">
-      <div className="flex-1 p-6 overflow-auto">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold text-foreground">Rangos Cash</h1>
-            <Button onClick={exportRanges} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export All
-            </Button>
+    <div className="flex h-full w-full">
+      {/* Left Sidebar - Sequence Selector */}
+      <aside className="w-56 border-r bg-card overflow-auto">
+        <div className="p-4">
+          <h2 className="text-lg font-semibold mb-4 text-foreground">Secuencias</h2>
+          <div className="space-y-1">
+            {sequences.map((seq) => (
+              <button
+                key={seq.id}
+                onClick={() => setActiveSequence(seq.id)}
+                className={cn(
+                  "w-full text-left px-4 py-3 rounded-lg transition-colors text-sm font-medium",
+                  activeSequence === seq.id
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted text-foreground"
+                )}
+              >
+                {seq.label}
+              </button>
+            ))}
           </div>
-
-          <Tabs value={activeSequence} onValueChange={(v) => setActiveSequence(v as SequenceType)}>
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="OPEN_RAISE">Open Raise</TabsTrigger>
-              <TabsTrigger value="RAISE_OVER_LIMP">Raise Over Limp</TabsTrigger>
-              <TabsTrigger value="3BET">3Bet</TabsTrigger>
-              <TabsTrigger value="SQUEEZE">Squeeze</TabsTrigger>
-              <TabsTrigger value="COLD_4BET">Cold 4Bet</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="OPEN_RAISE" className="mt-6">
-              <OpenRaiseSequence onSave={saveRange} />
-            </TabsContent>
-
-            <TabsContent value="RAISE_OVER_LIMP" className="mt-6">
-              <RaiseOverLimpSequence onSave={saveRange} />
-            </TabsContent>
-
-            <TabsContent value="3BET" className="mt-6">
-              <ThreeBetSequence onSave={saveRange} />
-            </TabsContent>
-
-            <TabsContent value="SQUEEZE" className="mt-6">
-              <SqueezeSequence onSave={saveRange} />
-            </TabsContent>
-
-            <TabsContent value="COLD_4BET" className="mt-6">
-              <Cold4BetSequence onSave={saveRange} />
-            </TabsContent>
-          </Tabs>
-        </div>
-      </div>
-
-      <aside className="w-80 border-l bg-card p-4 overflow-auto">
-        <h2 className="text-lg font-semibold mb-4 text-foreground">Saved Ranges</h2>
-        <div className="space-y-2">
-          {savedRanges.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No saved ranges yet</p>
-          ) : (
-            savedRanges.map((range) => (
-              <Card key={range.id} className="p-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="font-medium text-sm text-foreground">{range.name}</p>
-                    <p className="text-xs text-muted-foreground">{range.sequence}</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => deleteRange(range.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </Card>
-            ))
-          )}
         </div>
       </aside>
+
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold text-foreground">Rangos Cash</h1>
+          </div>
+
+          {activeSequence === 'OPEN_RAISE' && (
+            <OpenRaiseSequence onSave={saveRange} />
+          )}
+
+          {activeSequence === 'RAISE_OVER_LIMP' && (
+            <RaiseOverLimpSequence onSave={saveRange} />
+          )}
+
+          {activeSequence === '3BET' && (
+            <ThreeBetSequence onSave={saveRange} />
+          )}
+
+          {activeSequence === 'SQUEEZE' && (
+            <SqueezeSequence onSave={saveRange} />
+          )}
+
+          {activeSequence === 'COLD_4BET' && (
+            <Cold4BetSequence onSave={saveRange} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
