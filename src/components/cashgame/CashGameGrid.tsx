@@ -4,15 +4,19 @@ import { CashHandMatrix, HandAction, CashAction, getActionColor } from '@/types/
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface CashGameGridProps {
   hands: CashHandMatrix;
   onChange: (hands: CashHandMatrix) => void;
   availableActions: CashAction[];
+  combinations: number;
+  percentage: number;
+  onSave: () => void;
 }
 
-export function CashGameGrid({ hands, onChange, availableActions }: CashGameGridProps) {
+export function CashGameGrid({ hands, onChange, availableActions, combinations, percentage, onSave }: CashGameGridProps) {
   const [selectedHand, setSelectedHand] = useState<string | null>(null);
   const [currentAction, setCurrentAction] = useState<CashAction>(availableActions[0]);
 
@@ -67,80 +71,125 @@ export function CashGameGrid({ hands, onChange, availableActions }: CashGameGrid
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {availableActions.map((action) => (
-          <Button
-            key={action}
-            variant={currentAction === action ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setCurrentAction(action)}
-            className="text-xs"
-          >
-            {action}
-          </Button>
-        ))}
-        <Button variant="destructive" size="sm" onClick={clearAll}>
-          Clear All
-        </Button>
+    <div className="flex gap-6">
+      {/* Main Grid Area */}
+      <div className="flex-1 space-y-4">
+        {/* Action Legend */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-sm font-medium text-foreground mr-2">Actions:</span>
+          {availableActions.map((action) => (
+            <Badge key={action} className={cn(getActionColor(action), "text-xs")}>
+              {action}
+            </Badge>
+          ))}
+        </div>
+
+        {/* 13x13 Grid */}
+        <div className="grid grid-cols-13 gap-0.5 bg-border p-1 rounded-lg">
+          {HAND_LABELS.map((row, rowIndex) => 
+            row.map((hand, colIndex) => (
+              <button
+                key={`${rowIndex}-${colIndex}`}
+                onClick={() => handleCellClick(hand)}
+                className={cn(
+                  "aspect-square text-[10px] font-medium rounded transition-all hover:scale-105",
+                  "flex flex-col items-center justify-center",
+                  getHandColor(hand),
+                  selectedHand === hand && "ring-2 ring-primary"
+                )}
+              >
+                <span className="text-foreground">{hand}</span>
+                <span className="text-[8px] text-foreground/80">{getHandDisplay(hand)}</span>
+              </button>
+            ))
+          )}
+        </div>
       </div>
 
-      <div className="grid grid-cols-13 gap-0.5 bg-border p-1 rounded-lg">
-        {HAND_LABELS.map((row, rowIndex) => 
-          row.map((hand, colIndex) => (
-            <button
-              key={`${rowIndex}-${colIndex}`}
-              onClick={() => handleCellClick(hand)}
-              className={cn(
-                "aspect-square text-[10px] font-medium rounded transition-all hover:scale-105",
-                "flex flex-col items-center justify-center",
-                getHandColor(hand),
-                selectedHand === hand && "ring-2 ring-primary"
-              )}
-            >
-              <span className="text-foreground">{hand}</span>
-              <span className="text-[8px] text-foreground/80">{getHandDisplay(hand)}</span>
-            </button>
-          ))
-        )}
-      </div>
-
-      {selectedHand && (
-        <div className="p-4 border rounded-lg bg-card space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-foreground">Edit {selectedHand}</h3>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedHand(null)}>
-              Close
+      {/* Right Sidebar */}
+      <div className="w-80 flex-shrink-0 space-y-4">
+        {/* Action Selector */}
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-3 text-foreground">Select Action</h3>
+          <div className="flex flex-col gap-2">
+            {availableActions.map((action) => (
+              <Button
+                key={action}
+                variant={currentAction === action ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setCurrentAction(action)}
+                className="w-full justify-start"
+              >
+                <span className={cn("w-3 h-3 rounded-full mr-2", getActionColor(action))} />
+                {action}
+              </Button>
+            ))}
+            <Button variant="destructive" size="sm" onClick={clearAll} className="w-full mt-2">
+              Clear All
             </Button>
           </div>
+        </Card>
 
-          {availableActions.map((action) => {
-            const currentValue = hands[selectedHand]?.find(a => a.action === action)?.percentage || 0;
-            
-            return (
-              <div key={action} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Badge className={getActionColor(action)}>{action}</Badge>
-                  <span className="text-sm font-medium text-foreground">{currentValue}%</span>
-                </div>
-                <Slider
-                  value={[currentValue]}
-                  onValueChange={([value]) => addActionToHand(selectedHand, action, value)}
-                  max={100}
-                  step={5}
-                  className="w-full"
-                />
+        {/* Combo Editor */}
+        {selectedHand && (
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-foreground">Edit {selectedHand}</h3>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedHand(null)}>
+                ×
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {availableActions.map((action) => {
+                const currentValue = hands[selectedHand]?.find(a => a.action === action)?.percentage || 0;
+                
+                return (
+                  <div key={action} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-foreground">{action}</span>
+                      <span className="text-xs font-semibold text-foreground">{currentValue}%</span>
+                    </div>
+                    <Slider
+                      value={[currentValue]}
+                      onValueChange={([value]) => addActionToHand(selectedHand, action, value)}
+                      max={100}
+                      step={5}
+                      className="w-full"
+                    />
+                  </div>
+                );
+              })}
+
+              <div className="pt-2 border-t mt-3">
+                <p className="text-xs text-muted-foreground">
+                  Total: {hands[selectedHand]?.reduce((sum, a) => sum + a.percentage, 0) || 0}%
+                </p>
               </div>
-            );
-          })}
+            </div>
+          </Card>
+        )}
 
-          <div className="pt-2 border-t">
-            <p className="text-sm text-muted-foreground">
-              Total: {hands[selectedHand]?.reduce((sum, a) => sum + a.percentage, 0) || 0}%
-            </p>
+        {/* Statistics */}
+        <Card className="p-4">
+          <h3 className="text-sm font-semibold mb-3 text-foreground">Statistics</h3>
+          <div className="space-y-3">
+            <div>
+              <div className="text-2xl font-bold text-primary">{percentage}%</div>
+              <div className="text-xs text-muted-foreground">Range Percentage</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-primary">{combinations}</div>
+              <div className="text-xs text-muted-foreground">Total Combinations</div>
+            </div>
           </div>
-        </div>
-      )}
+        </Card>
+
+        {/* Save Button */}
+        <Button onClick={onSave} className="w-full" size="lg">
+          Save Range
+        </Button>
+      </div>
     </div>
   );
 }

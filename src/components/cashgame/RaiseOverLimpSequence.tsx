@@ -55,14 +55,15 @@ export function RaiseOverLimpSequence({ onSave }: RaiseOverLimpSequenceProps) {
   const percentage = calculateCashPercentage(hands);
 
   return (
-    <div className="space-y-6">
-      <Card className="p-4">
-        <div className="space-y-4">
+    <div className="flex gap-6">
+      {/* Left: Position Selectors */}
+      <div className="w-64 flex-shrink-0">
+        <Card className="p-4 space-y-4">
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">
+            <label className="text-sm font-medium text-foreground mb-3 block">
               Limper Position
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {limperPositions.map((pos) => (
                 <Button
                   key={pos}
@@ -75,6 +76,7 @@ export function RaiseOverLimpSequence({ onSave }: RaiseOverLimpSequenceProps) {
                       setHeroPosition(newAvailable[0]);
                     }
                   }}
+                  className="w-full"
                 >
                   {pos}
                 </Button>
@@ -83,13 +85,14 @@ export function RaiseOverLimpSequence({ onSave }: RaiseOverLimpSequenceProps) {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">
+            <label className="text-sm font-medium text-foreground mb-3 block">
               Second Limper (Optional)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               <Button
                 variant={limper2Position === null ? 'default' : 'outline'}
                 onClick={() => setLimper2Position(null)}
+                className="w-full"
               >
                 None
               </Button>
@@ -98,6 +101,7 @@ export function RaiseOverLimpSequence({ onSave }: RaiseOverLimpSequenceProps) {
                   key={pos}
                   variant={limper2Position === pos ? 'default' : 'outline'}
                   onClick={() => setLimper2Position(pos)}
+                  className="w-full"
                 >
                   {pos}
                 </Button>
@@ -106,45 +110,36 @@ export function RaiseOverLimpSequence({ onSave }: RaiseOverLimpSequenceProps) {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">
-              Your Position (Raise Over Limp)
+            <label className="text-sm font-medium text-foreground mb-3 block">
+              Your Position (ROL)
             </label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {getAvailableHeroPositions().map((pos) => (
                 <Button
                   key={pos}
                   variant={heroPosition === pos ? 'default' : 'outline'}
                   onClick={() => setHeroPosition(pos)}
+                  className="w-full"
                 >
                   {pos}
                 </Button>
               ))}
             </div>
           </div>
+        </Card>
+      </div>
 
-          <div className="grid grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
-            <div>
-              <div className="text-2xl font-bold text-primary">{percentage}%</div>
-              <div className="text-xs text-muted-foreground">Range %</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-primary">{combinations}</div>
-              <div className="text-xs text-muted-foreground">Combos</div>
-            </div>
-            <div>
-              <Button onClick={handleSave} className="w-full">
-                Save Range
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <CashGameGrid
-        hands={hands}
-        onChange={setHands}
-        availableActions={availableActions}
-      />
+      {/* Center: Grid */}
+      <div className="flex-1">
+        <CashGameGrid
+          hands={hands}
+          onChange={setHands}
+          availableActions={availableActions}
+          combinations={combinations}
+          percentage={percentage}
+          onSave={handleSave}
+        />
+      </div>
     </div>
   );
 }
