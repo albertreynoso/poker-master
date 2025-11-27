@@ -12,6 +12,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navItems = [
     { path: '/ranges', label: 'Rangos', icon: LayoutGrid },
     { path: '/training', label: 'Training', icon: GraduationCap },
+    { path: '/rangos-cash', label: 'Rangos Cash', icon: LayoutGrid },
   ];
 
   return (
