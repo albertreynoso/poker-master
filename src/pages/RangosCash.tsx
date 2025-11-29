@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { SequenceType, CashRange, CashHandMatrix, CashPosition } from '@/types/cashGame.ts';
+import { SequenceType, CashRange, CashHandMatrix, CashPosition, CashAction, getActionColor } from '@/types/cashGame.ts';
 import { CashGameGrid } from '@/components/cashgame/CashGameGrid';
+import { ActionSelectorPanel } from '@/components/cashgame/ActionSelectorPanel';
+import { HandEditorSidebar } from '@/components/cashgame/HandEditorSidebar';
 import { FrequenciesPanel } from '@/components/cashgame/FrequenciesPanel';
 import { RangeEditorSidebar } from '@/components/cashgame/RangeEditorSidebar';
 import { toast } from 'sonner';
@@ -32,7 +34,6 @@ type SequenceConfigMap = {
   [K in SequenceType]: SequenceConfig;
 };
 
-// Función helper para obtener posiciones después de otra
 const getPositionsAfter = (pos: CashPosition | 'None'): CashPosition[] => {
   if (pos === 'None') return [];
   const order: CashPosition[] = ['EP', 'MP', 'CO', 'BTN', 'SB', 'BB'];
@@ -46,7 +47,7 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
     positions: {
       hero: { label: 'Your Position (Open Raise)', options: ['EP', 'MP', 'CO', 'BTN', 'SB'] as CashPosition[] }
     },
-    actions: ['OR-ALL-IN', 'OR-4BET-ALL-IN', 'OR-4BET-FOLD', 'OR-CALL', 'OR-FOLD'],
+    actions: ['OR-4BET-ALL-IN', 'OR-4BET-FOLD', 'OR-CALL 3BET', 'OR-FOLD'],
     extraActions: ['3BET', '3BET + CALL', 'SQUEEZE', 'COLD 4BET']
   },
   RAISE_OVER_LIMP: {
@@ -56,23 +57,18 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
       secondLimper: { label: 'Second Limper (Optional)', options: ['None'] as (CashPosition | 'None')[] },
       hero: { label: 'Your Position (Raise Over Limp)', options: [] as CashPosition[] }
     },
-    actions: ['ROL-ALL-IN', 'ROL-RAISE', 'ROL-FOLD'],
+    actions: ['ROL-4BET-ALL-IN', 'ROL-4BET-FOLD', 'ROL-CALL 3BET', 'ROL-FOLD'],
     getFilteredPositions: (key: string, selected: Record<string, CashPosition | 'None'>) => {
       const limperPos = selected.limper as CashPosition;
-
       if (key === 'secondLimper') {
         const afterLimper = getPositionsAfter(limperPos);
         return ['None', ...afterLimper];
       }
-
       if (key === 'hero') {
         const limper2 = selected.secondLimper;
-        const basePos = limper2 && limper2 !== 'None'
-          ? limper2 as CashPosition
-          : limperPos;
+        const basePos = limper2 && limper2 !== 'None' ? limper2 as CashPosition : limperPos;
         return getPositionsAfter(basePos);
       }
-
       return ['EP', 'MP', 'CO', 'BTN', 'SB', 'BB'];
     }
   },
@@ -82,7 +78,7 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
       opponent: { label: 'Open Raiser Position', options: ['EP', 'MP', 'CO', 'BTN', 'SB'] as CashPosition[] },
       hero: { label: 'Your Position (3Bet)', options: [] as CashPosition[] }
     },
-    actions: ['3BET-ALL-IN', '3BET-CALL', '3BET-FOLD'],
+    actions: ['3BET-ALL-IN', '3BET-CALL 4BET', '3BET-FOLD'],
     getFilteredPositions: (key: string, selected: Record<string, CashPosition | 'None'>) => {
       if (key === 'hero') {
         const opponentPos = selected.opponent as CashPosition;
@@ -98,19 +94,16 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
       caller: { label: 'Caller Position', options: [] as CashPosition[] },
       hero: { label: 'Your Position (Squeeze)', options: [] as CashPosition[] }
     },
-    actions: ['SQZ-ALL-IN', 'SQZ-CALL', 'SQZ-FOLD'],
+    actions: ['SQZ-ALL-IN', 'SQZ-FOLD', 'COLD-CALL'],
     getFilteredPositions: (key: string, selected: Record<string, CashPosition | 'None'>) => {
       const raiserPos = selected.raiser as CashPosition;
       const callerPos = selected.caller as CashPosition;
-
       if (key === 'caller') {
         return getPositionsAfter(raiserPos);
       }
-
       if (key === 'hero') {
         return getPositionsAfter(callerPos);
       }
-
       return ['EP', 'MP', 'CO', 'BTN', 'SB', 'BB'];
     }
   },
@@ -121,19 +114,16 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
       threeBetter: { label: '3Better Position', options: [] as CashPosition[] },
       hero: { label: 'Your Position (Cold 4Bet)', options: [] as CashPosition[] }
     },
-    actions: ['C4B-ALL-IN', 'C4B-CALL', 'C4B-FOLD'],
+    actions: ['4BET-CALL', '4BET-FOLD'],
     getFilteredPositions: (key: string, selected: Record<string, CashPosition | 'None'>) => {
       const openerPos = selected.opener as CashPosition;
       const threeBetPos = selected.threeBetter as CashPosition;
-
       if (key === 'threeBetter') {
         return getPositionsAfter(openerPos);
       }
-
       if (key === 'hero') {
         return getPositionsAfter(threeBetPos);
       }
-
       return ['EP', 'MP', 'CO', 'BTN', 'SB', 'BB'];
     }
   }
@@ -146,6 +136,8 @@ export default function RangosCash() {
   const [selectedPositions, setSelectedPositions] = useState<Record<string, CashPosition | 'None'>>({});
   const [selectedExtraAction, setSelectedExtraAction] = useState<ExtraAction | null>(null);
   const [extraActionPositions, setExtraActionPositions] = useState<ExtraActionPositions>({});
+  const [selectedHand, setSelectedHand] = useState<string | null>(null);
+  const [currentAction, setCurrentAction] = useState<CashAction>('OR-4BET-ALL-IN');
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -158,11 +150,11 @@ export default function RangosCash() {
     }
   }, []);
 
-  // Reset cuando cambia la secuencia
   useEffect(() => {
     setHands({});
     setSelectedExtraAction(null);
     setExtraActionPositions({});
+    setSelectedHand(null);
 
     const config = SEQUENCE_CONFIG[activeSequence];
     const initialPositions: Record<string, CashPosition | 'None'> = {};
@@ -174,9 +166,13 @@ export default function RangosCash() {
     });
 
     setSelectedPositions(initialPositions);
+    
+    // Actualizar la acción actual según la secuencia
+    if (config.actions.length > 0) {
+      setCurrentAction(config.actions[0] as CashAction);
+    }
   }, [activeSequence]);
 
-  // Función para obtener posiciones filtradas para acciones extra
   const getExtraActionFilteredPositions = (
     action: ExtraAction,
     posKey: string,
@@ -188,40 +184,29 @@ export default function RangosCash() {
     switch (action) {
       case '3BET':
         return afterHero;
-
       case '3BET + CALL':
-        if (posKey === 'threeBetPos') {
-          return afterHero;
-        }
+        if (posKey === 'threeBetPos') return afterHero;
         if (posKey === 'callPos' && currentExtraPositions.threeBetPos) {
           return getPositionsAfter(currentExtraPositions.threeBetPos);
         }
         return [];
-
       case 'SQUEEZE':
-        if (posKey === 'callerPos') {
-          return afterHero;
-        }
+        if (posKey === 'callerPos') return afterHero;
         if (posKey === 'squeezePos' && currentExtraPositions.callerPos) {
           return getPositionsAfter(currentExtraPositions.callerPos);
         }
         return [];
-
       case 'COLD 4BET':
-        if (posKey === 'threeBetPos') {
-          return afterHero;
-        }
+        if (posKey === 'threeBetPos') return afterHero;
         if (posKey === 'fourBetPos' && currentExtraPositions.threeBetPos) {
           return getPositionsAfter(currentExtraPositions.threeBetPos);
         }
         return [];
-
       default:
         return [];
     }
   };
 
-  // Inicializar posiciones de acción extra
   const initializeExtraActionPositions = (action: ExtraAction, heroPos: CashPosition) => {
     const afterHero = getPositionsAfter(heroPos);
     if (afterHero.length === 0) return {};
@@ -232,7 +217,6 @@ export default function RangosCash() {
       case '3BET':
         newPositions.threeBetPos = afterHero[0];
         break;
-
       case '3BET + CALL':
         newPositions.threeBetPos = afterHero[0];
         const afterThreeBet = getPositionsAfter(afterHero[0]);
@@ -240,7 +224,6 @@ export default function RangosCash() {
           newPositions.callPos = afterThreeBet[0];
         }
         break;
-
       case 'SQUEEZE':
         newPositions.callerPos = afterHero[0];
         const afterCaller = getPositionsAfter(afterHero[0]);
@@ -248,7 +231,6 @@ export default function RangosCash() {
           newPositions.squeezePos = afterCaller[0];
         }
         break;
-
       case 'COLD 4BET':
         newPositions.threeBetPos = afterHero[0];
         const afterThreeBet2 = getPositionsAfter(afterHero[0]);
@@ -261,14 +243,11 @@ export default function RangosCash() {
     return newPositions;
   };
 
-  // Toggle acción extra
   const handleExtraActionToggle = (action: ExtraAction) => {
     if (selectedExtraAction === action) {
-      // Desactivar
       setSelectedExtraAction(null);
       setExtraActionPositions({});
     } else {
-      // Activar nueva acción
       setSelectedExtraAction(action);
       const heroPos = selectedPositions.hero as CashPosition;
       const newPositions = initializeExtraActionPositions(action, heroPos);
@@ -276,13 +255,11 @@ export default function RangosCash() {
     }
   };
 
-  // Cambiar posición de acción extra
   const handleExtraPositionChange = (posKey: keyof ExtraActionPositions, value: CashPosition) => {
     if (!selectedExtraAction) return;
 
     const newPositions = { ...extraActionPositions, [posKey]: value };
 
-    // Actualizar posiciones dependientes
     if (selectedExtraAction === '3BET + CALL' && posKey === 'threeBetPos') {
       const afterThreeBet = getPositionsAfter(value);
       if (afterThreeBet.length > 0) {
@@ -313,9 +290,7 @@ export default function RangosCash() {
     setExtraActionPositions(newPositions);
   };
 
-  // Cambiar posición base (para otras secuencias)
   const handlePositionChange = (key: string, value: CashPosition | 'None') => {
-    // Si es Open Raise y es la posición hero, reinicializar acciones extra
     if (activeSequence === 'OPEN_RAISE' && key === 'hero' && selectedExtraAction) {
       const heroPos = value as CashPosition;
       const newPositions = initializeExtraActionPositions(selectedExtraAction, heroPos);
@@ -323,8 +298,6 @@ export default function RangosCash() {
     }
 
     const newPositions = { ...selectedPositions, [key]: value };
-
-    // Resetear posiciones dependientes (para otras secuencias)
     const config = SEQUENCE_CONFIG[activeSequence];
     const posKeys = Object.keys(config.positions);
     const currentIndex = posKeys.indexOf(key);
@@ -342,29 +315,23 @@ export default function RangosCash() {
     setSelectedPositions(newPositions);
   };
 
-  // Obtener opciones filtradas
   const getFilteredOptions = (key: string): (CashPosition | 'None')[] => {
     const config = SEQUENCE_CONFIG[activeSequence];
-
     if (config.getFilteredPositions) {
       return config.getFilteredPositions(key, selectedPositions);
     }
-
     return config.positions[key]?.options || [];
   };
 
   const handleSaveRange = (name: string) => {
-    // Combinar posiciones base con extra actions, convirtiendo a Record<string, CashPosition>
     const allPositions: Record<string, CashPosition> = {};
 
-    // Agregar posiciones base
     Object.entries(selectedPositions).forEach(([key, value]) => {
       if (value !== 'None') {
         allPositions[key] = value as CashPosition;
       }
     });
 
-    // Agregar posiciones de acciones extra si existen
     Object.entries(extraActionPositions).forEach(([key, value]) => {
       if (value) {
         allPositions[key] = value;
@@ -401,16 +368,11 @@ export default function RangosCash() {
   };
 
   const currentConfig = SEQUENCE_CONFIG[activeSequence];
-  const combinations = calculateCashCombinations(hands);
-  const percentage = calculateCashPercentage(hands);
-
-
 
   return (
     <div className="h-screen flex gap-4 p-4 bg-background">
-      {/* COLUMNA 1: Secuencias y Acciones Extra */}
+      {/* COLUMNA 1: Secuencias */}
       <div className="w-[400px] flex flex-col gap-4">
-        {/* Panel de Secuencias */}
         <div className="border border-border rounded-lg bg-card p-4">
           <h2 className="text-lg font-semibold mb-3">Secuencias</h2>
           <div className="flex flex-col gap-2">
@@ -427,15 +389,11 @@ export default function RangosCash() {
           </div>
         </div>
 
-        {/* Panel de Configuración */}
         <div className="flex-1 border border-border rounded-lg bg-card p-4 overflow-auto">
           <h2 className="text-lg font-semibold mb-3">Configuración</h2>
-
           <div className="space-y-4">
-            {/* Selectores de Posición Base */}
             {Object.entries(currentConfig.positions).map(([key, posConfig]) => {
               const filteredOptions = getFilteredOptions(key);
-
               if (filteredOptions.length === 0) return null;
 
               return (
@@ -457,7 +415,6 @@ export default function RangosCash() {
               );
             })}
 
-            {/* Acciones Extra (solo para OPEN RAISE) */}
             {activeSequence === 'OPEN_RAISE' && currentConfig.extraActions && (
               <>
                 <div className="pt-2 border-t">
@@ -476,7 +433,6 @@ export default function RangosCash() {
                   </div>
                 </div>
 
-                {/* Configuración contextual de acciones extra */}
                 {selectedExtraAction && (
                   <div className="pt-2 border-t space-y-3">
                     {selectedExtraAction === '3BET' && (
@@ -667,68 +623,71 @@ export default function RangosCash() {
         </div>
       </div>
 
-      {/* COLUMNA 2: Matriz de Rango */}
+      {/* COLUMNA 2: Matriz */}
       <div className="flex-1 border border-border rounded-lg bg-card p-6 flex flex-col overflow-hidden">
         <div className="flex-shrink-0 mb-4">
-
-          {/* Leyenda de Acciones - TAMAÑO REDUCIDO */}
           <div className="flex flex-wrap items-center gap-3">
-            {currentConfig.actions.map((action, index) => {
-              const colors = [
-                'bg-red-500',
-                'bg-orange-500',
-                'bg-yellow-500',
-                'bg-green-500',
-                'bg-blue-500',
-                'bg-purple-500',
-                'bg-gray-500'
-              ];
-              return (
-                <div key={action} className="flex items-center gap-1.5">
-                  <div className={`w-3 h-3 rounded ${colors[index % colors.length]}`} />
-                  <span className="text-sm font-normal">{action}</span>
-                </div>
-              );
-            })}
+            {currentConfig.actions.map((action) => (
+              <div key={action} className="flex items-center gap-1.5">
+                <div className={`w-3 h-3 rounded ${getActionColor(action as any)}`} />
+                <span className="text-sm font-normal">{action}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Matriz con tamaño máximo optimizado */}
         <div className="flex-1 flex items-center justify-center min-h-0 overflow-auto">
           <div className="w-full h-full p-2">
             <CashGameGrid
               hands={hands}
               onChange={setHands}
               availableActions={currentConfig.actions as any}
+              currentAction={currentAction}
+              onHandSelect={setSelectedHand}
+              selectedHand={selectedHand}
             />
           </div>
         </div>
       </div>
 
-      {/* COLUMNA 3: Barra Lateral - Controles y Estadísticas */}
-      <div className="w-80 border border-border rounded-lg bg-card p-4 flex flex-col gap-4 overflow-auto">
-        <h2 className="text-lg font-semibold">Barra lateral</h2>
-
-        {/* Panel de Frecuencias */}
-        <FrequenciesPanel
-          isOpen={true}
-          onToggle={() => { }}
-          hands={hands}
-          onHandsChange={setHands}
-        />
-
-        {/* Sidebar de Estadísticas y Guardar */}
-        <RangeEditorSidebar
+      {/* COLUMNA 3: Sidebar */}
+      <div className="w-80 flex flex-col gap-4 overflow-auto">
+        {/* Selector de Acción - PRINCIPAL */}
+        <ActionSelectorPanel
           availableActions={currentConfig.actions as any}
-          hands={hands}
-          onHandsChange={setHands}
+          selectedAction={currentAction}
+          onActionChange={setCurrentAction}
         />
 
-        {/* Botón Export */}
-        <Button onClick={exportRanges} variant="outline" className="w-full">
-          <Download className="h-4 w-4 mr-2" />
-          Export All
-        </Button>
+        {/* Editor de Frecuencias - OPCIONAL/COLAPSABLE */}
+        <HandEditorSidebar
+          selectedHand={selectedHand}
+          hands={hands}
+          availableActions={currentConfig.actions as any}
+          onHandsChange={setHands}
+          onClose={() => setSelectedHand(null)}
+        />
+
+        {/* Otros paneles */}
+        <div className="border border-border rounded-lg bg-card p-4 flex flex-col gap-4">
+          <FrequenciesPanel
+            isOpen={true}
+            onToggle={() => { }}
+            hands={hands}
+            onHandsChange={setHands}
+          />
+
+          <RangeEditorSidebar
+            availableActions={currentConfig.actions as any}
+            hands={hands}
+            onHandsChange={setHands}
+          />
+
+          <Button onClick={exportRanges} variant="outline" className="w-full">
+            <Download className="h-4 w-4 mr-2" />
+            Export All
+          </Button>
+        </div>
       </div>
     </div>
   );
