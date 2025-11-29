@@ -3,14 +3,25 @@ import { SequenceType, CashRange, CashHandMatrix, CashPosition, CashAction, getA
 import { CashGameGrid } from '@/components/cashgame/CashGameGrid';
 import { ActionSelectorPanel } from '@/components/cashgame/ActionSelectorPanel';
 import { HandEditorSidebar } from '@/components/cashgame/HandEditorSidebar';
-import { FrequenciesPanel } from '@/components/cashgame/FrequenciesPanel';
-import { RangeEditorSidebar } from '@/components/cashgame/RangeEditorSidebar';
+import { RangeStatisticsPanel } from '@/components/cashgame/RangeStatisticsPanel'; 
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Download, Edit, Save } from 'lucide-react';
 import { calculateCashCombinations, calculateCashPercentage } from '@/types/cashGame';
 
 const STORAGE_KEY = 'poker-cash-ranges';
+
+// Sistema de prioridad de acciones (de menos a más agresivo)
+const ACTION_PRIORITY: Record<string, number> = {
+  'OR-FOLD': 10, 'ROL-FOLD': 10, '3BET-FOLD': 10, 'SQZ-FOLD': 10, '4BET-FOLD': 10,
+  'COLD-CALL': 20,
+  'OR-CALL 3BET': 30, 'ROL-CALL 3BET': 30,
+  '3BET-CALL 4BET': 40, '4BET-CALL': 40,
+  'OR-4BET-FOLD': 50, 'ROL-4BET-FOLD': 50,
+  'OR-4BET-ALL-IN': 60, 'ROL-4BET-ALL-IN': 60, '3BET-ALL-IN': 60, 'SQZ-ALL-IN': 60,
+};
+
+const getActionPriority = (action: CashAction): number => ACTION_PRIORITY[action] || 50;
 
 type ExtraAction = '3BET' | '3BET + CALL' | 'SQUEEZE' | 'COLD 4BET';
 
@@ -138,6 +149,7 @@ export default function RangosCash() {
   const [extraActionPositions, setExtraActionPositions] = useState<ExtraActionPositions>({});
   const [selectedHand, setSelectedHand] = useState<string | null>(null);
   const [currentAction, setCurrentAction] = useState<CashAction>('OR-4BET-ALL-IN');
+  const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -155,6 +167,7 @@ export default function RangosCash() {
     setSelectedExtraAction(null);
     setExtraActionPositions({});
     setSelectedHand(null);
+    setIsEditMode(false);
 
     const config = SEQUENCE_CONFIG[activeSequence];
     const initialPositions: Record<string, CashPosition | 'None'> = {};
@@ -167,7 +180,6 @@ export default function RangosCash() {
 
     setSelectedPositions(initialPositions);
     
-    // Actualizar la acción actual según la secuencia
     if (config.actions.length > 0) {
       setCurrentAction(config.actions[0] as CashAction);
     }
@@ -368,6 +380,31 @@ export default function RangosCash() {
   };
 
   const currentConfig = SEQUENCE_CONFIG[activeSequence];
+
+  // Calcular estadísticas por acción (ordenadas de menos a más agresiva)
+  const getActionStats = () => {
+    const stats: { action: CashAction; combos: number; percentage: number }[] = [];
+    
+    currentConfig.actions.forEach(action => {
+      let combos = 0;
+      Object.entries(hands).forEach(([hand, actions]) => {
+        const actionData = actions.find(a => a.action === action);
+        if (actionData && actionData.percentage > 0) {
+          // Calcular combos para esta mano
+          const handCombos = hand.includes('s') ? 4 : hand.includes('o') ? 12 : 6;
+          combos += (handCombos * actionData.percentage) / 100;
+        }
+      });
+      
+      if (combos > 0) {
+        const percentage = (combos / 1326) * 100;
+        stats.push({ action: action as CashAction, combos: Math.round(combos * 10) / 10, percentage: Math.round(percentage * 100) / 100 });
+      }
+    });
+    
+    // Ordenar por prioridad (menor a mayor agresividad)
+    return stats.sort((a, b) => getActionPriority(a.action) - getActionPriority(b.action));
+  };
 
   return (
     <div className="h-screen flex gap-4 p-4 bg-background">
@@ -626,13 +663,36 @@ export default function RangosCash() {
       {/* COLUMNA 2: Matriz */}
       <div className="flex-1 border border-border rounded-lg bg-card p-6 flex flex-col overflow-hidden">
         <div className="flex-shrink-0 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {currentConfig.actions.map((action) => (
-              <div key={action} className="flex items-center gap-1.5">
-                <div className={`w-3 h-3 rounded ${getActionColor(action as any)}`} />
-                <span className="text-sm font-normal">{action}</span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between">
+            {/* Leyenda de acciones */}
+            <div className="flex flex-wrap items-center gap-3">
+              {currentConfig.actions.map((action) => (
+                <div key={action} className="flex items-center gap-1.5">
+                  <div className={`w-3 h-3 rounded ${getActionColor(action as any)}`} />
+                  <span className="text-sm font-normal">{action}</span>
+                </div>
+              ))}
+            </div>
+            
+            {/* Botón de Edición */}
+            <Button
+              variant={isEditMode ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setIsEditMode(!isEditMode)}
+              className="flex items-center gap-2"
+            >
+              {isEditMode ? (
+                <>
+                  <Save className="h-4 w-4" />
+                  Guardar
+                </>
+              ) : (
+                <>
+                  <Edit className="h-4 w-4" />
+                  Editar
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
@@ -640,7 +700,7 @@ export default function RangosCash() {
           <div className="w-full h-full p-2">
             <CashGameGrid
               hands={hands}
-              onChange={setHands}
+              onChange={isEditMode ? setHands : () => {}}
               availableActions={currentConfig.actions as any}
               currentAction={currentAction}
               onHandSelect={setSelectedHand}
@@ -652,42 +712,39 @@ export default function RangosCash() {
 
       {/* COLUMNA 3: Sidebar */}
       <div className="w-80 flex flex-col gap-4 overflow-auto">
-        {/* Selector de Acción - PRINCIPAL */}
-        <ActionSelectorPanel
-          availableActions={currentConfig.actions as any}
-          selectedAction={currentAction}
-          onActionChange={setCurrentAction}
-        />
+        {isEditMode ? (
+          <>
+            {/* Modo Edición: Selector de Acción */}
+            <ActionSelectorPanel
+              availableActions={currentConfig.actions as any}
+              selectedAction={currentAction}
+              onActionChange={setCurrentAction}
+            />
 
-        {/* Editor de Frecuencias - OPCIONAL/COLAPSABLE */}
-        <HandEditorSidebar
-          selectedHand={selectedHand}
-          hands={hands}
-          availableActions={currentConfig.actions as any}
-          onHandsChange={setHands}
-          onClose={() => setSelectedHand(null)}
-        />
+            {/* Modo Edición: Editor de Frecuencias */}
+            <HandEditorSidebar
+              selectedHand={selectedHand}
+              hands={hands}
+              availableActions={currentConfig.actions as any}
+              onHandsChange={setHands}
+              onClose={() => setSelectedHand(null)}
+            />
+          </>
+        ) : (
+          <>
+            {/* Modo Vista: Estadísticas del Rango */}
+            <RangeStatisticsPanel
+              hands={hands}
+              availableActions={currentConfig.actions as any}
+            />
+          </>
+        )}
 
-        {/* Otros paneles */}
-        <div className="border border-border rounded-lg bg-card p-4 flex flex-col gap-4">
-          <FrequenciesPanel
-            isOpen={true}
-            onToggle={() => { }}
-            hands={hands}
-            onHandsChange={setHands}
-          />
-
-          <RangeEditorSidebar
-            availableActions={currentConfig.actions as any}
-            hands={hands}
-            onHandsChange={setHands}
-          />
-
-          <Button onClick={exportRanges} variant="outline" className="w-full">
-            <Download className="h-4 w-4 mr-2" />
-            Export All
-          </Button>
-        </div>
+        {/* Botón Export */}
+        <Button onClick={exportRanges} variant="outline" className="w-full">
+          <Download className="h-4 w-4 mr-2" />
+          Export All
+        </Button>
       </div>
     </div>
   );
