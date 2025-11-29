@@ -40,3 +40,27 @@
 .read-the-docs {
   color: #888;
 }
+/* Transiciones suaves para elementos colapsables */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* Asegurar que el contenido no se desborde */
+.overflow-auto {
+  overflow: auto;
+}
+
+/* Para el botón flotante */
+.absolute {
+  position: absolute;
+}
+
+.z-50 {
+  z-index: 50;
+}
+
+.z-40 {
+  z-index: 40;
+}

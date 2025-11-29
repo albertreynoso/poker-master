@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutGrid, GraduationCap } from 'lucide-react';
+import { LayoutGrid, GraduationCap, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { useState } from 'react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -8,19 +9,48 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   
   const navItems = [
     { path: '/ranges', label: 'Rangos', icon: LayoutGrid },
     { path: '/training', label: 'Training', icon: GraduationCap },
+    { path: '/rangos-cash', label: 'Rangos Cash', icon: LayoutGrid },
   ];
 
   return (
     <div className="flex h-screen w-full bg-background">
-      <aside className="w-64 border-r bg-card flex flex-col">
-        <div className="p-6 border-b">
-          <h1 className="text-2xl font-bold text-foreground">Poker Range Pro</h1>
+      {/* Sidebar con botón integrado */}
+      <aside 
+        className={cn(
+          "border-r bg-card flex flex-col transition-all duration-300 ease-in-out",
+          sidebarOpen ? "w-64" : "w-20" // Ancho reducido cuando está colapsado
+        )}
+      >
+        {/* Header con botón toggle integrado */}
+        <div className="p-4 border-b flex items-center justify-between">
+          {sidebarOpen ? (
+            <>
+              <h1 className="text-xl font-bold text-foreground">Poker Range Pro</h1>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-2 rounded-lg hover:bg-accent transition-colors"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 rounded-lg hover:bg-accent transition-colors w-full flex justify-center"
+              title="Expand sidebar"
+            >
+              <PanelLeftOpen className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
         </div>
         
+        {/* Navegación - se adapta al estado del sidebar */}
         <nav className="flex-1 p-4">
           <ul className="space-y-2">
             {navItems.map((item) => {
@@ -32,13 +62,15 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Link
                     to={item.path}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors",
+                      "flex items-center gap-3 rounded-lg transition-colors group",
                       "hover:bg-accent/50",
-                      isActive && "bg-accent text-accent-foreground font-medium"
+                      isActive && "bg-accent text-accent-foreground font-medium",
+                      sidebarOpen ? "px-4 py-3" : "px-3 py-3 justify-center" // Centrado cuando está colapsado
                     )}
+                    title={sidebarOpen ? item.label : item.label} // Tooltip cuando está colapsado
                   >
                     <Icon className="h-5 w-5" />
-                    <span>{item.label}</span>
+                    {sidebarOpen && <span>{item.label}</span>}
                   </Link>
                 </li>
               );
@@ -47,7 +79,12 @@ export function AppLayout({ children }: AppLayoutProps) {
         </nav>
       </aside>
       
-      <main className="flex-1 overflow-auto">
+      {/* Contenido principal */}
+      <main 
+        className={cn(
+          "flex-1 overflow-auto transition-all duration-300 ease-in-out"
+        )}
+      >
         {children}
       </main>
     </div>
