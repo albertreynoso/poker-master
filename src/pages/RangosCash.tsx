@@ -3,13 +3,13 @@ import { SequenceType, CashRange, CashHandMatrix, CashPosition, CashAction, getA
 import { CashGameGrid } from '@/components/cashgame/CashGameGrid';
 import { ActionSelectorPanel } from '@/components/cashgame/ActionSelectorPanel';
 import { HandEditorSidebar } from '@/components/cashgame/HandEditorSidebar';
-import { RangeStatisticsPanel } from '@/components/cashgame/RangeStatisticsPanel'; 
+import { RangeStatisticsPanel } from '@/components/cashgame/RangeStatisticsPanel';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Download, Edit, Save } from 'lucide-react';
+import { Download, Edit, Save, Upload } from 'lucide-react';
 import { calculateCashCombinations, calculateCashPercentage } from '@/types/cashGame';
-
-const STORAGE_KEY = 'poker-cash-ranges';
+import { useCashRangeStorage, generateRangeName } from '@/hooks/useCashRangeStorage';
+export { generateRangeName } from '@/hooks/useCashRangeStorage';
 
 // Sistema de prioridad de acciones (de menos a más agresivo)
 const ACTION_PRIORITY: Record<string, number> = {
@@ -142,7 +142,12 @@ const SEQUENCE_CONFIG: SequenceConfigMap = {
 
 export default function RangosCash() {
   const [activeSequence, setActiveSequence] = useState<SequenceType>('OPEN_RAISE');
-  const [savedRanges, setSavedRanges] = useState<CashRange[]>([]);
+
+  // ✅ NUEVO: Hook de storage
+  const storage = useCashRangeStorage();
+  const [currentRange, setCurrentRange] = useState<CashRange | null>(null);
+  const [allRanges, setAllRanges] = useState<CashRange[]>([]);
+
   const [hands, setHands] = useState<CashHandMatrix>({});
   const [selectedPositions, setSelectedPositions] = useState<Record<string, CashPosition | 'None'>>({});
   const [selectedExtraAction, setSelectedExtraAction] = useState<ExtraAction | null>(null);
@@ -151,16 +156,59 @@ export default function RangosCash() {
   const [currentAction, setCurrentAction] = useState<CashAction>('OR-4BET-ALL-IN');
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // ✅ Cargar el rango actual cuando cambie la configuración
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    if (!storage.isInitialized) return;
+
+    const loadCurrentRange = async () => {
       try {
-        setSavedRanges(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to load saved ranges', e);
+        const allPositions: Record<string, CashPosition> = {};
+
+        Object.entries(selectedPositions).forEach(([key, value]) => {
+          if (value !== 'None') {
+            allPositions[key] = value;
+          }
+        });
+
+        Object.entries(extraActionPositions).forEach(([key, value]) => {
+          if (value) {
+            allPositions[key] = value;
+          }
+        });
+
+        const config = {
+          sequence: activeSequence,
+          positions: allPositions
+        };
+
+        const range = await storage.loadRange(config);
+        setCurrentRange(range);
+
+        if (range) {
+          setHands(range.hands);
+        } else {
+          setHands({});
+        }
+      } catch (error) {
+        console.error('Error loading range:', error);
+        setHands({});
       }
-    }
-  }, []);
+    };
+
+    loadCurrentRange();
+  }, [activeSequence, selectedPositions, extraActionPositions, storage.isInitialized]);
+
+  // ✅ NUEVO: Cargar lista de todos los rangos
+  useEffect(() => {
+    if (!storage.isInitialized) return;
+
+    const loadAllRanges = async () => {
+      const ranges = await storage.listAllRanges();
+      setAllRanges(ranges);
+    };
+
+    loadAllRanges();
+  }, [storage.isInitialized]);
 
   useEffect(() => {
     setHands({});
@@ -179,7 +227,7 @@ export default function RangosCash() {
     });
 
     setSelectedPositions(initialPositions);
-    
+
     if (config.actions.length > 0) {
       setCurrentAction(config.actions[0] as CashAction);
     }
@@ -220,39 +268,9 @@ export default function RangosCash() {
   };
 
   const initializeExtraActionPositions = (action: ExtraAction, heroPos: CashPosition) => {
-    const afterHero = getPositionsAfter(heroPos);
-    if (afterHero.length === 0) return {};
-
-    const newPositions: ExtraActionPositions = {};
-
-    switch (action) {
-      case '3BET':
-        newPositions.threeBetPos = afterHero[0];
-        break;
-      case '3BET + CALL':
-        newPositions.threeBetPos = afterHero[0];
-        const afterThreeBet = getPositionsAfter(afterHero[0]);
-        if (afterThreeBet.length > 0) {
-          newPositions.callPos = afterThreeBet[0];
-        }
-        break;
-      case 'SQUEEZE':
-        newPositions.callerPos = afterHero[0];
-        const afterCaller = getPositionsAfter(afterHero[0]);
-        if (afterCaller.length > 0) {
-          newPositions.squeezePos = afterCaller[0];
-        }
-        break;
-      case 'COLD 4BET':
-        newPositions.threeBetPos = afterHero[0];
-        const afterThreeBet2 = getPositionsAfter(afterHero[0]);
-        if (afterThreeBet2.length > 0) {
-          newPositions.fourBetPos = afterThreeBet2[0];
-        }
-        break;
-    }
-
-    return newPositions;
+    // NO inicializar automáticamente, devolver objeto vacío
+    // El usuario debe seleccionar manualmente cada posición
+    return {};
   };
 
   const handleExtraActionToggle = (action: ExtraAction) => {
@@ -335,12 +353,13 @@ export default function RangosCash() {
     return config.positions[key]?.options || [];
   };
 
-  const handleSaveRange = (name: string) => {
+  // ✅ MODIFICADO: handleSaveRange para usar el nuevo storage
+  const handleSaveRange = async (name?: string) => {
     const allPositions: Record<string, CashPosition> = {};
 
     Object.entries(selectedPositions).forEach(([key, value]) => {
       if (value !== 'None') {
-        allPositions[key] = value as CashPosition;
+        allPositions[key] = value;
       }
     });
 
@@ -350,61 +369,225 @@ export default function RangosCash() {
       }
     });
 
-    const newRange: CashRange = {
-      id: Date.now().toString(),
-      name,
+    const config = {
+      sequence: activeSequence,
+      positions: allPositions
+    };
+
+    const rangeName = name || generateRangeName(config);
+
+    const success = await storage.saveRange(config, {
+      name: rangeName,
       sequence: activeSequence,
       hands,
       positions: allPositions as any,
       totalPercentage: calculateCashPercentage(hands),
-      combinations: calculateCashCombinations(hands),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+      combinations: calculateCashCombinations(hands)
+    });
 
-    const updated = [...savedRanges, newRange];
-    setSavedRanges(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    toast.success(`Range "${name}" saved successfully`);
+    if (success) {
+      toast.success(`Range "${rangeName}" saved successfully`);
+      const ranges = await storage.listAllRanges();
+      setAllRanges(ranges);
+      const updatedRange = await storage.loadRange(config);
+      setCurrentRange(updatedRange);
+    } else {
+      toast.error('Failed to save range');
+    }
   };
 
-  const exportRanges = () => {
-    const dataStr = JSON.stringify(savedRanges, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'cash-game-ranges.json';
-    link.click();
-    toast.success('Ranges exported');
+  // ✅ MODIFICADO: exportRanges para usar el nuevo storage
+  const exportRanges = async () => {
+    try {
+      const data = await storage.exportAllRanges();
+      const dataBlob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `cash-ranges-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Ranges exported successfully');
+    } catch (error) {
+      toast.error('Failed to export ranges');
+    }
+  };
+
+  // ✅ NUEVO: Función de importación
+  const importRanges = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const imported = await storage.importRanges(text);
+
+      const ranges = await storage.listAllRanges();
+      setAllRanges(ranges);
+
+      toast.success(`${imported} ranges imported successfully`);
+    } catch (error) {
+      toast.error('Failed to import ranges');
+    }
+
+    event.target.value = '';
+  };
+
+  // ✅ NUEVO: Función para verificar si la configuración está completa
+  const isConfigurationComplete = (): boolean => {
+    const config = SEQUENCE_CONFIG[activeSequence];
+
+    // Validación específica por tipo de secuencia
+    switch (activeSequence) {
+      case 'OPEN_RAISE':
+        console.log('🔍 DEBUG Open Raise:');
+        console.log('  - Hero:', selectedPositions.hero);
+        console.log('  - Extra Action:', selectedExtraAction);
+        console.log('  - Extra Positions:', extraActionPositions);
+
+        // Debe tener la posición hero seleccionada
+        if (!selectedPositions.hero || selectedPositions.hero === 'None') {
+          console.log('  ❌ Hero no válido');
+          return false;
+        }
+
+        // Si NO hay acción extra seleccionada, NO está completo
+        // (el usuario DEBE seleccionar una acción extra para completar)
+        if (!selectedExtraAction) {
+          console.log('  ❌ No hay acción extra seleccionada');
+          return false;
+        }
+
+        // Si hay acción extra seleccionada, DEBE estar completa
+        console.log('  ✅ Validando acción extra:', selectedExtraAction);
+        switch (selectedExtraAction) {
+          case '3BET':
+            if (!extraActionPositions.threeBetPos) {
+              console.log('  ❌ Falta threeBetPos');
+              return false;
+            }
+            console.log('  ✅ Configuración completa');
+            return true;
+
+          case '3BET + CALL':
+            if (!extraActionPositions.threeBetPos || !extraActionPositions.callPos) {
+              console.log('  ❌ Falta threeBetPos o callPos');
+              return false;
+            }
+            console.log('  ✅ Configuración completa');
+            return true;
+
+          case 'SQUEEZE':
+            if (!extraActionPositions.callerPos || !extraActionPositions.squeezePos) {
+              console.log('  ❌ Falta callerPos o squeezePos');
+              return false;
+            }
+            console.log('  ✅ Configuración completa');
+            return true;
+
+          case 'COLD 4BET':
+            if (!extraActionPositions.threeBetPos || !extraActionPositions.fourBetPos) {
+              console.log('  ❌ Falta threeBetPos o fourBetPos');
+              return false;
+            }
+            console.log('  ✅ Configuración completa');
+            return true;
+
+          default:
+            console.log('  ❌ Acción extra no reconocida');
+            return false;
+        }
+
+      case 'RAISE_OVER_LIMP':
+        // Necesita: limper y hero (secondLimper es opcional)
+        return !!(
+          selectedPositions.limper &&
+          selectedPositions.limper !== 'None' &&
+          selectedPositions.hero &&
+          selectedPositions.hero !== 'None'
+        );
+
+      case '3BET':
+        // Necesita: opponent (open raiser) y hero (3better)
+        return !!(
+          selectedPositions.opponent &&
+          selectedPositions.opponent !== 'None' &&
+          selectedPositions.hero &&
+          selectedPositions.hero !== 'None'
+        );
+
+      case 'SQUEEZE':
+        // Necesita: raiser, caller y hero
+        return !!(
+          selectedPositions.raiser &&
+          selectedPositions.raiser !== 'None' &&
+          selectedPositions.caller &&
+          selectedPositions.caller !== 'None' &&
+          selectedPositions.hero &&
+          selectedPositions.hero !== 'None'
+        );
+
+      case 'COLD_4BET':
+        // Necesita: opener, threeBetter y hero
+        return !!(
+          selectedPositions.opener &&
+          selectedPositions.opener !== 'None' &&
+          selectedPositions.threeBetter &&
+          selectedPositions.threeBetter !== 'None' &&
+          selectedPositions.hero &&
+          selectedPositions.hero !== 'None'
+        );
+
+      default:
+        return false;
+    }
   };
 
   const currentConfig = SEQUENCE_CONFIG[activeSequence];
+  const configComplete = isConfigurationComplete();
 
-  // Calcular estadísticas por acción (ordenadas de menos a más agresiva)
   const getActionStats = () => {
     const stats: { action: CashAction; combos: number; percentage: number }[] = [];
-    
+
     currentConfig.actions.forEach(action => {
       let combos = 0;
       Object.entries(hands).forEach(([hand, actions]) => {
         const actionData = actions.find(a => a.action === action);
         if (actionData && actionData.percentage > 0) {
-          // Calcular combos para esta mano
           const handCombos = hand.includes('s') ? 4 : hand.includes('o') ? 12 : 6;
           combos += (handCombos * actionData.percentage) / 100;
         }
       });
-      
+
       if (combos > 0) {
         const percentage = (combos / 1326) * 100;
         stats.push({ action: action as CashAction, combos: Math.round(combos * 10) / 10, percentage: Math.round(percentage * 100) / 100 });
       }
     });
-    
-    // Ordenar por prioridad (menor a mayor agresividad)
+
     return stats.sort((a, b) => getActionPriority(a.action) - getActionPriority(b.action));
   };
+
+  // ✅ NUEVO: Pantallas de carga
+  if (storage.isMigrating) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg font-medium">Migrating ranges to new storage system...</p>
+          <p className="text-sm text-muted-foreground mt-2">This will only happen once</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!storage.isInitialized) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <p className="text-lg">Initializing storage...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen flex gap-4 p-4 bg-background">
@@ -662,66 +845,84 @@ export default function RangosCash() {
 
       {/* COLUMNA 2: Matriz */}
       <div className="flex-1 border border-border rounded-lg bg-card p-6 flex flex-col overflow-hidden">
-        <div className="flex-shrink-0 mb-4">
-          <div className="flex items-center justify-between">
-            {/* Leyenda de acciones */}
-            <div className="flex flex-wrap items-center gap-3">
-              {currentConfig.actions.map((action) => (
-                <div key={action} className="flex items-center gap-1.5">
-                  <div className={`w-3 h-3 rounded ${getActionColor(action as any)}`} />
-                  <span className="text-sm font-normal">{action}</span>
+        {configComplete ? (
+          <>
+            <div className="flex-shrink-0 mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-3">
+                  {currentConfig.actions.map((action) => (
+                    <div key={action} className="flex items-center gap-1.5">
+                      <div className={`w-3 h-3 rounded ${getActionColor(action as any)}`} />
+                      <span className="text-sm font-normal">{action}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            
-            {/* Botón de Edición */}
-            <Button
-              variant={isEditMode ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setIsEditMode(!isEditMode)}
-              className="flex items-center gap-2"
-            >
-              {isEditMode ? (
-                <>
-                  <Save className="h-4 w-4" />
-                  Guardar
-                </>
-              ) : (
-                <>
-                  <Edit className="h-4 w-4" />
-                  Editar
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
 
-        <div className="flex-1 flex items-center justify-center min-h-0 overflow-auto">
-          <div className="w-full h-full p-2">
-            <CashGameGrid
-              hands={hands}
-              onChange={isEditMode ? setHands : () => {}}
-              availableActions={currentConfig.actions as any}
-              currentAction={currentAction}
-              onHandSelect={setSelectedHand}
-              selectedHand={selectedHand}
-            />
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant={isEditMode ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      if (isEditMode) {
+                        handleSaveRange();
+                      }
+                      setIsEditMode(!isEditMode);
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    {isEditMode ? (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Guardar
+                      </>
+                    ) : (
+                      <>
+                        <Edit className="h-4 w-4" />
+                        Editar
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 flex items-center justify-center min-h-0 overflow-auto">
+              <div className="w-full h-full p-2">
+                <CashGameGrid
+                  hands={hands}
+                  onChange={isEditMode ? setHands : () => { }}
+                  availableActions={currentConfig.actions as any}
+                  currentAction={currentAction}
+                  onHandSelect={setSelectedHand}
+                  selectedHand={selectedHand}
+                />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center space-y-3">
+              <p className="text-lg font-medium text-muted-foreground">
+                Selecciona una secuencia
+              </p>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Completa la configuración de posiciones para visualizar el rango
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* COLUMNA 3: Sidebar */}
       <div className="w-80 flex flex-col gap-4 overflow-auto">
         {isEditMode ? (
           <>
-            {/* Modo Edición: Selector de Acción */}
             <ActionSelectorPanel
               availableActions={currentConfig.actions as any}
               selectedAction={currentAction}
               onActionChange={setCurrentAction}
             />
 
-            {/* Modo Edición: Editor de Frecuencias */}
             <HandEditorSidebar
               selectedHand={selectedHand}
               hands={hands}
@@ -732,7 +933,6 @@ export default function RangosCash() {
           </>
         ) : (
           <>
-            {/* Modo Vista: Estadísticas del Rango */}
             <RangeStatisticsPanel
               hands={hands}
               availableActions={currentConfig.actions as any}
@@ -740,11 +940,39 @@ export default function RangosCash() {
           </>
         )}
 
-        {/* Botón Export */}
-        <Button onClick={exportRanges} variant="outline" className="w-full">
-          <Download className="h-4 w-4 mr-2" />
-          Export All
-        </Button>
+        {/* ✅ MODIFICADO: Botones de Export/Import */}
+        <div className="space-y-2">
+          <Button onClick={exportRanges} variant="outline" className="w-full">
+            <Download className="h-4 w-4 mr-2" />
+            Export All ({allRanges.length})
+          </Button>
+
+          <label className="cursor-pointer block">
+            <Button variant="outline" className="w-full" asChild>
+              <span>
+                <Upload className="h-4 w-4 mr-2" />
+                Import Ranges
+              </span>
+            </Button>
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={importRanges}
+            />
+          </label>
+
+          {/* ✅ NUEVO: Info del rango actual */}
+          {currentRange && (
+            <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+              Current: {currentRange.name}
+              <br />
+              <span className="text-xs">
+                Updated: {new Date(currentRange.updatedAt).toLocaleDateString()}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
