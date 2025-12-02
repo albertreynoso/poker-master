@@ -7,6 +7,7 @@ import { AppLayout } from "./components/AppLayout";
 import Index from "./pages/Index";
 import Ranges from "./pages/Ranges";
 import Training from "./pages/Training";
+import RangosCash from "./pages/RangosCash";
 import NotFound from "./pages/NotFound";
 import RangosCash from "./pages/RangosCash";
 
