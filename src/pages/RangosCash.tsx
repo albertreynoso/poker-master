@@ -976,4 +976,8 @@ export default function RangosCash() {
       </div>
     </div>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 6da4ace9736b362fd1cc31f340a6fdee7e242b77
