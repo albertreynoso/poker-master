@@ -9,7 +9,6 @@ import Ranges from "./pages/Ranges";
 import Training from "./pages/Training";
 import RangosCash from "./pages/RangosCash";
 import NotFound from "./pages/NotFound";
-import RangosCash from "./pages/RangosCash";
 
 const queryClient = new QueryClient();
 
