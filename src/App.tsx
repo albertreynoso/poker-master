@@ -7,6 +7,7 @@ import { AppLayout } from "./components/AppLayout";
 import Index from "./pages/Index";
 import Ranges from "./pages/Ranges";
 import Training from "./pages/Training";
+import TrainingGTO from "./pages/TrainingGTO";
 import RangosCash from "./pages/RangosCash";
 import NotFound from "./pages/NotFound";
 
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/" element={<Index />} />
           <Route path="/ranges" element={<AppLayout><Ranges /></AppLayout>} />
           <Route path="/training" element={<AppLayout><Training /></AppLayout>} />
+          <Route path="/training-gto" element={<AppLayout><TrainingGTO /></AppLayout>} />
           <Route path="/rangos-cash" element={<AppLayout><RangosCash /></AppLayout>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
